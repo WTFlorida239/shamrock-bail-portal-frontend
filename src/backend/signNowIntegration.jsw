@@ -32,11 +32,11 @@ export async function getSignNowUrl(bailData) {
         await logHandoffAttempt(bailData);
         
         // Get SignNow API credentials from secrets
-        const signNowToken = await wixSecretsBackend.getSecret('SIGNNOW_ACCESS_TOKEN');
+        const signNowToken = await wixSecretsBackend.getSecret('SIGNNOW_API_TOKEN');
         const signNowTemplateId = await wixSecretsBackend.getSecret('SIGNNOW_TEMPLATE_ID');
         
         if (!signNowToken) {
-            console.error('SignNow token not configured');
+            console.error('SIGNNOW_API_TOKEN not configured in Wix Secrets');
             // Return fallback URL or handle gracefully
             return getFallbackUrl(bailData);
         }

@@ -1,0 +1,300 @@
+/**
+ * Shamrock Bail Bonds - SignNow Integration Backend Module
+ * 
+ * This module handles the secure handoff to SignNow for bail paperwork.
+ * 
+ * CRITICAL: This module does NOT replace SignNow functionality.
+ * It only prepares data and generates the handoff URL.
+ * SignNow owns the entire paperwork experience after handoff.
+ * 
+ * File: backend/signNowIntegration.jsw
+ */
+
+import { fetch } from 'wix-fetch';
+import wixSecretsBackend from 'wix-secrets-backend';
+import wixData from 'wix-data';
+
+// SignNow API endpoints (to be configured)
+const SIGNNOW_BASE_URL = 'https://api.signnow.com';
+
+/**
+ * Get the SignNow URL for starting bail paperwork
+ * 
+ * @param {Object} bailData - Data collected from the portal
+ * @param {Object} bailData.member - Member information
+ * @param {Object} bailData.consents - Consent data
+ * @param {Object} bailData.geolocation - Geolocation data
+ * @returns {Promise<string>} - SignNow URL for redirect
+ */
+export async function getSignNowUrl(bailData) {
+    try {
+        // Log the handoff attempt
+        await logHandoffAttempt(bailData);
+        
+        // Get SignNow API credentials from secrets
+        const signNowToken = await wixSecretsBackend.getSecret('SIGNNOW_ACCESS_TOKEN');
+        const signNowTemplateId = await wixSecretsBackend.getSecret('SIGNNOW_TEMPLATE_ID');
+        
+        if (!signNowToken) {
+            console.error('SignNow token not configured');
+            // Return fallback URL or handle gracefully
+            return getFallbackUrl(bailData);
+        }
+        
+        // Prepare data for SignNow
+        const signNowData = prepareSignNowData(bailData);
+        
+        // Create signing link via SignNow API
+        const signingUrl = await createSigningLink(signNowToken, signNowTemplateId, signNowData);
+        
+        // Log successful URL generation
+        await logHandoffSuccess(bailData, signingUrl);
+        
+        return signingUrl;
+        
+    } catch (error) {
+        console.error('Error generating SignNow URL:', error);
+        await logHandoffError(bailData, error);
+        
+        // Return fallback URL
+        return getFallbackUrl(bailData);
+    }
+}
+
+/**
+ * Prepare data for SignNow from portal data
+ * 
+ * @param {Object} bailData - Raw bail data from portal
+ * @returns {Object} - Formatted data for SignNow
+ */
+function prepareSignNowData(bailData) {
+    return {
+        // Signer information
+        signer: {
+            email: bailData.member?.email || '',
+            firstName: bailData.member?.firstName || '',
+            lastName: bailData.member?.lastName || '',
+            phone: bailData.member?.phone || ''
+        },
+        
+        // Pre-fill fields (if supported by template)
+        prefill: {
+            signer_name: `${bailData.member?.firstName || ''} ${bailData.member?.lastName || ''}`.trim(),
+            signer_email: bailData.member?.email || '',
+            signer_phone: bailData.member?.phone || '',
+            consent_timestamp: bailData.consents?.timestamp || new Date().toISOString(),
+            geolocation_lat: bailData.geolocation?.latitude || '',
+            geolocation_lng: bailData.geolocation?.longitude || '',
+            source: 'wix_portal'
+        },
+        
+        // Metadata
+        metadata: {
+            memberId: bailData.member?.id,
+            source: bailData.source || 'wix_portal',
+            timestamp: new Date().toISOString(),
+            consents: bailData.consents,
+            geolocation: bailData.geolocation
+        }
+    };
+}
+
+/**
+ * Create a signing link via SignNow API
+ * 
+ * @param {string} token - SignNow API token
+ * @param {string} templateId - Template ID to use
+ * @param {Object} data - Prepared signing data
+ * @returns {Promise<string>} - Signing URL
+ */
+async function createSigningLink(token, templateId, data) {
+    // Note: This is a placeholder for the actual SignNow API integration
+    // The actual implementation depends on your SignNow setup and workflow
+    
+    // Option 1: Use SignNow embedded signing
+    // Option 2: Use SignNow hosted signing page
+    // Option 3: Use custom integration via webhooks
+    
+    // For now, return a constructed URL that your existing workflow expects
+    // This should be updated based on your actual SignNow integration
+    
+    const baseUrl = await wixSecretsBackend.getSecret('SIGNNOW_SIGNING_BASE_URL') 
+        || 'https://app.signnow.com/webapp/document';
+    
+    // Encode data for URL
+    const encodedData = encodeURIComponent(JSON.stringify({
+        email: data.signer.email,
+        name: data.prefill.signer_name,
+        source: 'shamrock_portal'
+    }));
+    
+    // Return the signing URL
+    // Adjust this based on your actual SignNow workflow
+    return `${baseUrl}/${templateId}?prefill=${encodedData}`;
+}
+
+/**
+ * Get fallback URL when SignNow is unavailable
+ * 
+ * @param {Object} bailData - Bail data
+ * @returns {string} - Fallback URL
+ */
+function getFallbackUrl(bailData) {
+    // Fallback to a contact page or phone call
+    // This ensures users can still proceed even if SignNow is down
+    return '/contact?reason=bail-paperwork&source=signnow-fallback';
+}
+
+/**
+ * Log handoff attempt to database
+ * 
+ * @param {Object} bailData - Bail data
+ */
+async function logHandoffAttempt(bailData) {
+    try {
+        await wixData.insert('SignNowHandoffs', {
+            memberId: bailData.member?.id,
+            memberEmail: bailData.member?.email,
+            status: 'attempted',
+            timestamp: new Date(),
+            consents: JSON.stringify(bailData.consents),
+            geolocation: JSON.stringify(bailData.geolocation),
+            source: bailData.source
+        });
+    } catch (error) {
+        console.error('Error logging handoff attempt:', error);
+    }
+}
+
+/**
+ * Log successful handoff
+ * 
+ * @param {Object} bailData - Bail data
+ * @param {string} url - Generated URL
+ */
+async function logHandoffSuccess(bailData, url) {
+    try {
+        await wixData.insert('SignNowHandoffs', {
+            memberId: bailData.member?.id,
+            memberEmail: bailData.member?.email,
+            status: 'success',
+            timestamp: new Date(),
+            signingUrl: url,
+            source: bailData.source
+        });
+    } catch (error) {
+        console.error('Error logging handoff success:', error);
+    }
+}
+
+/**
+ * Log handoff error
+ * 
+ * @param {Object} bailData - Bail data
+ * @param {Error} error - Error object
+ */
+async function logHandoffError(bailData, error) {
+    try {
+        await wixData.insert('SignNowHandoffs', {
+            memberId: bailData.member?.id,
+            memberEmail: bailData.member?.email,
+            status: 'error',
+            timestamp: new Date(),
+            errorMessage: error.message,
+            source: bailData.source
+        });
+    } catch (logError) {
+        console.error('Error logging handoff error:', logError);
+    }
+}
+
+/**
+ * Verify SignNow webhook signature
+ * 
+ * @param {string} payload - Webhook payload
+ * @param {string} signature - Webhook signature
+ * @returns {Promise<boolean>} - Whether signature is valid
+ */
+export async function verifyWebhookSignature(payload, signature) {
+    try {
+        const webhookSecret = await wixSecretsBackend.getSecret('SIGNNOW_WEBHOOK_SECRET');
+        
+        if (!webhookSecret) {
+            console.error('Webhook secret not configured');
+            return false;
+        }
+        
+        // Implement signature verification based on SignNow's webhook format
+        // This is a placeholder - implement based on SignNow documentation
+        
+        return true;
+    } catch (error) {
+        console.error('Error verifying webhook signature:', error);
+        return false;
+    }
+}
+
+/**
+ * Handle SignNow webhook callback
+ * 
+ * @param {Object} webhookData - Data from SignNow webhook
+ * @returns {Promise<Object>} - Processing result
+ */
+export async function handleSignNowWebhook(webhookData) {
+    try {
+        const { event, document_id, signer_email, status } = webhookData;
+        
+        // Log webhook receipt
+        await wixData.insert('SignNowWebhooks', {
+            event,
+            documentId: document_id,
+            signerEmail: signer_email,
+            status,
+            timestamp: new Date(),
+            rawData: JSON.stringify(webhookData)
+        });
+        
+        // Handle different event types
+        switch (event) {
+            case 'document_complete':
+                await handleDocumentComplete(webhookData);
+                break;
+            case 'document_viewed':
+                await handleDocumentViewed(webhookData);
+                break;
+            case 'invite_sent':
+                await handleInviteSent(webhookData);
+                break;
+            default:
+                console.log('Unhandled webhook event:', event);
+        }
+        
+        return { success: true, event };
+        
+    } catch (error) {
+        console.error('Error handling webhook:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+/**
+ * Handle document completion
+ */
+async function handleDocumentComplete(webhookData) {
+    // Update member record, send notifications, etc.
+    console.log('Document completed:', webhookData.document_id);
+}
+
+/**
+ * Handle document viewed
+ */
+async function handleDocumentViewed(webhookData) {
+    console.log('Document viewed:', webhookData.document_id);
+}
+
+/**
+ * Handle invite sent
+ */
+async function handleInviteSent(webhookData) {
+    console.log('Invite sent:', webhookData.document_id);
+}

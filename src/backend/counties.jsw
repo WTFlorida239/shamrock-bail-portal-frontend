@@ -1,0 +1,240 @@
+// counties.jsw - FIXED VERSION
+// This version queries the Import1 CMS collection instead of using require()
+
+import wixData from 'wix-data';
+
+/**
+ * Get all Florida counties with sheriff and clerk information
+ * @returns {Promise<Object>} County data object with counties array and total count
+ */
+export async function getCounties() {
+  try {
+    // Query the Import1 collection which contains all Florida counties
+    const results = await wixData.query("Import1")
+      .limit(100)
+      .ascending("countyName")
+      .find();
+    
+    console.log(`Fetched ${results.items.length} counties from Import1 collection`);
+    
+    // Map Import1 fields to the expected schema format
+    const counties = results.items.map(item => ({
+      county_name: item.countyName || "",
+      slug: item.countySlug || "",
+      sheriff_url: item.bookingWebsiteLink || "",
+      clerk_url: item.countyClerkWebsitelink || "",
+      jail_roster_url: item.recordsSearchLink || "",
+      phone_sheriff: item.bookingPhoneNumber || "",
+      phone_clerk: item.countyClerkPhoneNumber || "",
+      status: "Active", // All counties in Import1 are active
+      
+      // Additional useful fields from Import1
+      title: item.title || "",
+      h1Headline: item.h1Headline || "",
+      seoTitle: item.seoTitle || "",
+      seoDescription: item.seoDescription || "",
+      primaryPhone: item.primaryPhone || "(239) 332-2245"
+    }));
+    
+    return {
+      success: true,
+      data: {
+        counties: counties,
+        total: results.totalCount
+      }
+    };
+  } catch (error) {
+    console.error('Error fetching counties from Import1:', error);
+    return {
+      success: false,
+      error: 'Failed to load county data',
+      details: error.message
+    };
+  }
+}
+
+/**
+ * Get a single county by name
+ * @param {string} countyName - The name of the county (e.g., "Lee")
+ * @returns {Promise<Object>} Single county object or null if not found
+ */
+export async function getCountyByName(countyName) {
+  try {
+    const normalizedName = countyName.trim();
+    
+    const results = await wixData.query("Import1")
+      .eq("countyName", normalizedName)
+      .find();
+    
+    if (results.items.length === 0) {
+      return {
+        success: true,
+        data: null
+      };
+    }
+    
+    const item = results.items[0];
+    const county = {
+      county_name: item.countyName || "",
+      slug: item.countySlug || "",
+      sheriff_url: item.bookingWebsiteLink || "",
+      clerk_url: item.countyClerkWebsitelink || "",
+      jail_roster_url: item.recordsSearchLink || "",
+      phone_sheriff: item.bookingPhoneNumber || "",
+      phone_clerk: item.countyClerkPhoneNumber || "",
+      status: "Active",
+      title: item.title || "",
+      h1Headline: item.h1Headline || "",
+      seoTitle: item.seoTitle || "",
+      seoDescription: item.seoDescription || "",
+      primaryPhone: item.primaryPhone || "(239) 332-2245"
+    };
+    
+    return {
+      success: true,
+      data: county
+    };
+  } catch (error) {
+    console.error('Error fetching county by name:', error);
+    return {
+      success: false,
+      error: 'Failed to load county data',
+      details: error.message
+    };
+  }
+}
+
+/**
+ * Get a single county by slug
+ * @param {string} slug - The URL slug for the county (e.g., "lee")
+ * @returns {Promise<Object>} Single county object or null if not found
+ */
+export async function getCountyBySlug(slug) {
+  try {
+    const normalizedSlug = slug.trim().toLowerCase();
+    
+    const results = await wixData.query("Import1")
+      .eq("countySlug", normalizedSlug)
+      .find();
+    
+    if (results.items.length === 0) {
+      return {
+        success: true,
+        data: null
+      };
+    }
+    
+    const item = results.items[0];
+    const county = {
+      county_name: item.countyName || "",
+      slug: item.countySlug || "",
+      sheriff_url: item.bookingWebsiteLink || "",
+      clerk_url: item.countyClerkWebsitelink || "",
+      jail_roster_url: item.recordsSearchLink || "",
+      phone_sheriff: item.bookingPhoneNumber || "",
+      phone_clerk: item.countyClerkPhoneNumber || "",
+      status: "Active",
+      title: item.title || "",
+      h1Headline: item.h1Headline || "",
+      seoTitle: item.seoTitle || "",
+      seoDescription: item.seoDescription || "",
+      primaryPhone: item.primaryPhone || "(239) 332-2245"
+    };
+    
+    return {
+      success: true,
+      data: county
+    };
+  } catch (error) {
+    console.error('Error fetching county by slug:', error);
+    return {
+      success: false,
+      error: 'Failed to load county data',
+      details: error.message
+    };
+  }
+}
+
+/**
+ * Get counties filtered by status
+ * @param {string} status - Status to filter by ("Active" or "Planned")
+ * @returns {Promise<Object>} Filtered counties array
+ */
+export async function getCountiesByStatus(status) {
+  try {
+    // Note: Import1 only contains active counties
+    // If you need to filter, you would need a status field in Import1
+    const results = await wixData.query("Import1")
+      .limit(100)
+      .ascending("countyName")
+      .find();
+    
+    const counties = results.items.map(item => ({
+      county_name: item.countyName || "",
+      slug: item.countySlug || "",
+      sheriff_url: item.bookingWebsiteLink || "",
+      clerk_url: item.countyClerkWebsitelink || "",
+      jail_roster_url: item.recordsSearchLink || "",
+      phone_sheriff: item.bookingPhoneNumber || "",
+      phone_clerk: item.countyClerkPhoneNumber || "",
+      status: "Active"
+    }));
+    
+    return {
+      success: true,
+      data: {
+        counties: counties,
+        total: results.totalCount
+      }
+    };
+  } catch (error) {
+    console.error('Error filtering counties:', error);
+    return {
+      success: false,
+      error: 'Failed to filter county data',
+      details: error.message
+    };
+  }
+}
+
+/**
+ * Search counties by name (partial match)
+ * @param {string} searchTerm - Search term to match against county names
+ * @returns {Promise<Object>} Matching counties array
+ */
+export async function searchCounties(searchTerm) {
+  try {
+    const normalizedTerm = searchTerm.trim();
+    
+    const results = await wixData.query("Import1")
+      .contains("countyName", normalizedTerm)
+      .limit(50)
+      .find();
+    
+    const counties = results.items.map(item => ({
+      county_name: item.countyName || "",
+      slug: item.countySlug || "",
+      sheriff_url: item.bookingWebsiteLink || "",
+      clerk_url: item.countyClerkWebsitelink || "",
+      jail_roster_url: item.recordsSearchLink || "",
+      phone_sheriff: item.bookingPhoneNumber || "",
+      phone_clerk: item.countyClerkPhoneNumber || "",
+      status: "Active"
+    }));
+    
+    return {
+      success: true,
+      data: {
+        counties: counties,
+        total: results.totalCount
+      }
+    };
+  } catch (error) {
+    console.error('Error searching counties:', error);
+    return {
+      success: false,
+      error: 'Failed to search county data',
+      details: error.message
+    };
+  }
+}

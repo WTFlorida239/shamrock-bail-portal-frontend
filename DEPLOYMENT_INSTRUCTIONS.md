@@ -54,33 +54,34 @@ To verify:
    - Update the element IDs in the editor to match the code, OR
    - Update the code to match the existing element IDs
 
-### Step 6: Set Up Database Collections (If Not Already Done)
+### Step 6: Verify MagicLinks Collection
 
-The backend code expects two Wix Data collections:
+The backend code uses your existing **MagicLinks** collection.
 
-**Collection 1: AccessCodes**
-Fields:
-- `accessCode` (Text) - The unique access code
+**Required Fields:**
+- `token` (Text) - The unique access code/magic link token
+- `used` (Boolean) - false = active, true = used/inactive
+- `role` (Text) - "defendant", "indemnitor", or "staff"
+- `expiresAt` (Date & Time) - When the link expires
+
+**Optional Fields (Recommended):**
 - `caseId` (Text) - Reference to the case
-- `portalType` (Text) - "defendant", "indemnitor", or "staff"
-- `expiresAt` (Date & Time) - When the code expires
-- `isActive` (Boolean) - Whether the code is active
-- `createdAt` (Date & Time) - When the code was created
+- `email` (Text) - Associated email address
+- `createdAt` (Date & Time) - When the link was created
 
-**Collection 2: AccessCodeUsage** (for analytics)
-Fields:
-- `accessCode` (Text) - The code that was used
-- `caseId` (Text) - Associated case
-- `usedAt` (Date & Time) - When it was used
-- `ipAddress` (Text) - Optional
-- `userAgent` (Text) - Optional
-
-To create collections:
+**To verify:**
 1. Open the Database panel (left sidebar)
-2. Click "Add a Collection"
-3. Name it exactly as shown above
-4. Add the fields with the correct types
-5. Set permissions appropriately (read/write from backend only)
+2. Find the "MagicLinks" collection
+3. Click on it to view fields
+4. Ensure the required fields exist with correct types
+5. Permissions should be: Backend only (read/write)
+
+**Note:** The code maps your existing fields:
+- `token` → Access code (not "accessCode")
+- `used` → Active status (false = active)
+- `role` → Portal type (not "portalType")
+
+See `MAGICLINKS_SCHEMA.md` for complete documentation.
 
 ### Step 7: Configure Member Roles
 
@@ -116,8 +117,8 @@ Ensure these pages exist or update the redirect URLs in `PortalLanding.js`.
    - Click "Access Portal" button for Defendant
    - Should redirect to `/members/defendant-dashboard`
 
-3. **Test Access Code:**
-   - Create a test access code in the AccessCodes collection
+3### Test Access Code:**
+   - Create a test magic link in the MagicLinks collection
    - Enter it in the access code field
    - Click Submit
    - Should validate and redirect appropriately

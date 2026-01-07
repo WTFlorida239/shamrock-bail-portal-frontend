@@ -1,52 +1,63 @@
 /**
  * Shamrock Bail Bonds - Access Code Validation Backend
  * 
- * This backend module handles validation of access codes
- * for the portal landing page.
+ * This backend module handles validation of access codes (magic links)
+ * for the portal landing page using the existing MagicLinks CMS collection.
+ * 
+ * Field Mapping:
+ * - token (Text) -> Public access code/magic link token
+ * - used (Boolean) -> false = active, true = used/inactive
+ * - role (Text) -> "defendant", "indemnitor", or "staff"
+ * - expiresAt (Date) -> Expiration timestamp
+ * - caseId (Text) -> Reference to the case (optional)
+ * - email (Text) -> Associated email address (optional)
+ * - createdAt (Date) -> Creation timestamp (optional)
  */
 
 import wixData from 'wix-data';
 
 /**
- * Validate an access code and return portal information
- * @param {string} accessCode - The access code to validate
+ * Validate an access code (magic link token) and return portal information
+ * @param {string} accessCode - The access code/token to validate
  * @returns {Promise<object>} Validation result with portal information
  */
 export async function validateCode(accessCode) {
     try {
-        // Query the database for the access code
-        // Assuming you have a collection called "AccessCodes" with fields:
-        // - accessCode (text)
-        // - caseId (text)
-        // - portalType (text): "defendant", "indemnitor", or "staff"
-        // - expiresAt (date)
-        // - isActive (boolean)
-        
-        const results = await wixData.query("AccessCodes")
-            .eq("accessCode", accessCode)
-            .eq("isActive", true)
+        // Query the MagicLinks collection for the access code
+        // Looking for: active (used=false), not expired, matching token
+        const results = await wixData.query("MagicLinks")
+            .eq("token", accessCode)
+            .eq("used", false)
             .find();
         
         if (results.items.length === 0) {
             return {
                 valid: false,
-                message: "Invalid access code"
+                message: "Invalid or expired access code"
             };
         }
         
-        const codeData = results.items[0];
+        const magicLink = results.items[0];
         
         // Check if code has expired
-        if (codeData.expiresAt && new Date(codeData.expiresAt) < new Date()) {
+        if (magicLink.expiresAt && new Date(magicLink.expiresAt) < new Date()) {
+            // Mark as used since it's expired
+            await wixData.update("MagicLinks", {
+                _id: magicLink._id,
+                used: true
+            });
+            
             return {
                 valid: false,
                 message: "Access code has expired"
             };
         }
         
-        // Determine redirect URL based on portal type
+        // Determine redirect URL based on role (portal type)
         let redirectUrl;
-        switch (codeData.portalType) {
+        let portalType = magicLink.role ? magicLink.role.toLowerCase() : 'defendant';
+        
+        switch (portalType) {
             case 'defendant':
                 redirectUrl = '/members/defendant-dashboard';
                 break;
@@ -61,12 +72,19 @@ export async function validateCode(accessCode) {
         }
         
         // Log access code usage
-        await logAccessCodeUsage(accessCode, codeData.caseId);
+        await logAccessCodeUsage(accessCode, magicLink.caseId || null);
+        
+        // Mark the magic link as used
+        await wixData.update("MagicLinks", {
+            _id: magicLink._id,
+            used: true
+        });
         
         return {
             valid: true,
-            caseId: codeData.caseId,
-            portalType: codeData.portalType,
+            caseId: magicLink.caseId || null,
+            portalType: portalType,
+            email: magicLink.email || null,
             redirectUrl: redirectUrl,
             message: "Access code validated successfully"
         };
@@ -81,32 +99,34 @@ export async function validateCode(accessCode) {
 }
 
 /**
- * Generate a new access code for a case
+ * Generate a new magic link token for a case
  * @param {string} caseId - The case ID
- * @param {string} portalType - Type of portal (defendant, indemnitor, staff)
+ * @param {string} role - Role/portal type ("defendant", "indemnitor", "staff")
+ * @param {string} email - Email address associated with the magic link
  * @param {number} expirationDays - Number of days until expiration (default: 30)
- * @returns {Promise<string>} The generated access code
+ * @returns {Promise<string>} The generated access code/token
  */
-export async function generateAccessCode(caseId, portalType, expirationDays = 30) {
+export async function generateAccessCode(caseId, role, email, expirationDays = 30) {
     try {
         // Generate a random 8-character access code
-        const accessCode = generateRandomCode(8);
+        const token = generateRandomCode(8);
         
         // Calculate expiration date
         const expiresAt = new Date();
         expiresAt.setDate(expiresAt.getDate() + expirationDays);
         
-        // Store in database
-        await wixData.insert("AccessCodes", {
-            accessCode: accessCode,
+        // Store in MagicLinks collection
+        await wixData.insert("MagicLinks", {
+            token: token,
             caseId: caseId,
-            portalType: portalType,
+            role: role,
+            email: email,
             expiresAt: expiresAt,
-            isActive: true,
+            used: false,
             createdAt: new Date()
         });
         
-        return accessCode;
+        return token;
         
     } catch (error) {
         console.error('Error generating access code:', error);
@@ -115,21 +135,21 @@ export async function generateAccessCode(caseId, portalType, expirationDays = 30
 }
 
 /**
- * Deactivate an access code
- * @param {string} accessCode - The access code to deactivate
+ * Deactivate an access code (mark as used)
+ * @param {string} accessCode - The access code/token to deactivate
  * @returns {Promise<boolean>} Success status
  */
 export async function deactivateAccessCode(accessCode) {
     try {
-        const results = await wixData.query("AccessCodes")
-            .eq("accessCode", accessCode)
+        const results = await wixData.query("MagicLinks")
+            .eq("token", accessCode)
             .find();
         
         if (results.items.length > 0) {
-            const codeData = results.items[0];
-            await wixData.update("AccessCodes", {
-                _id: codeData._id,
-                isActive: false
+            const magicLink = results.items[0];
+            await wixData.update("MagicLinks", {
+                _id: magicLink._id,
+                used: true
             });
             return true;
         }
@@ -143,12 +163,45 @@ export async function deactivateAccessCode(accessCode) {
 }
 
 /**
+ * Reactivate an access code (mark as unused) - useful for testing
+ * @param {string} accessCode - The access code/token to reactivate
+ * @returns {Promise<boolean>} Success status
+ */
+export async function reactivateAccessCode(accessCode) {
+    try {
+        const results = await wixData.query("MagicLinks")
+            .eq("token", accessCode)
+            .find();
+        
+        if (results.items.length > 0) {
+            const magicLink = results.items[0];
+            
+            // Only reactivate if not expired
+            if (magicLink.expiresAt && new Date(magicLink.expiresAt) >= new Date()) {
+                await wixData.update("MagicLinks", {
+                    _id: magicLink._id,
+                    used: false
+                });
+                return true;
+            }
+        }
+        
+        return false;
+        
+    } catch (error) {
+        console.error('Error reactivating access code:', error);
+        return false;
+    }
+}
+
+/**
  * Log access code usage for analytics
  * @param {string} accessCode - The access code used
  * @param {string} caseId - The associated case ID
  */
 async function logAccessCodeUsage(accessCode, caseId) {
     try {
+        // Check if AccessCodeUsage collection exists, if not, skip logging
         await wixData.insert("AccessCodeUsage", {
             accessCode: accessCode,
             caseId: caseId,
@@ -157,8 +210,12 @@ async function logAccessCodeUsage(accessCode, caseId) {
             userAgent: null  // Can be populated if available
         });
     } catch (error) {
-        console.error('Error logging access code usage:', error);
-        // Don't throw - this is just logging
+        // Collection might not exist - that's okay, just log to console
+        console.log('Access code usage (not stored in DB):', {
+            accessCode,
+            caseId,
+            usedAt: new Date()
+        });
     }
 }
 
@@ -178,35 +235,104 @@ function generateRandomCode(length) {
 
 /**
  * Get case information by access code
- * @param {string} accessCode - The access code
+ * @param {string} accessCode - The access code/token
  * @returns {Promise<object>} Case information
  */
 export async function getCaseByAccessCode(accessCode) {
     try {
-        const results = await wixData.query("AccessCodes")
-            .eq("accessCode", accessCode)
-            .eq("isActive", true)
+        const results = await wixData.query("MagicLinks")
+            .eq("token", accessCode)
+            .eq("used", false)
             .find();
         
         if (results.items.length === 0) {
             return null;
         }
         
-        const codeData = results.items[0];
+        const magicLink = results.items[0];
         
-        // Fetch full case data
-        const caseResults = await wixData.query("Cases")
-            .eq("_id", codeData.caseId)
-            .find();
-        
-        if (caseResults.items.length > 0) {
-            return caseResults.items[0];
+        // If we have a caseId, fetch full case data
+        if (magicLink.caseId) {
+            const caseResults = await wixData.query("Cases")
+                .eq("_id", magicLink.caseId)
+                .find();
+            
+            if (caseResults.items.length > 0) {
+                return caseResults.items[0];
+            }
         }
         
-        return null;
+        // Return magic link data if no case found
+        return {
+            caseId: magicLink.caseId,
+            role: magicLink.role,
+            email: magicLink.email
+        };
         
     } catch (error) {
         console.error('Error getting case by access code:', error);
         return null;
+    }
+}
+
+/**
+ * Get all active magic links for a specific case
+ * @param {string} caseId - The case ID
+ * @returns {Promise<Array>} Array of active magic links
+ */
+export async function getActiveMagicLinksByCase(caseId) {
+    try {
+        const results = await wixData.query("MagicLinks")
+            .eq("caseId", caseId)
+            .eq("used", false)
+            .find();
+        
+        // Filter out expired links
+        const now = new Date();
+        const activeLinks = results.items.filter(link => {
+            if (!link.expiresAt) return true; // No expiration
+            return new Date(link.expiresAt) >= now;
+        });
+        
+        return activeLinks;
+        
+    } catch (error) {
+        console.error('Error getting active magic links by case:', error);
+        return [];
+    }
+}
+
+/**
+ * Clean up expired magic links (mark as used)
+ * This can be called periodically to maintain database hygiene
+ * @returns {Promise<number>} Number of links cleaned up
+ */
+export async function cleanupExpiredLinks() {
+    try {
+        const now = new Date();
+        
+        // Find all unused links that have expired
+        const results = await wixData.query("MagicLinks")
+            .eq("used", false)
+            .lt("expiresAt", now)
+            .find();
+        
+        let cleanedCount = 0;
+        
+        // Mark each as used
+        for (const link of results.items) {
+            await wixData.update("MagicLinks", {
+                _id: link._id,
+                used: true
+            });
+            cleanedCount++;
+        }
+        
+        console.log(`Cleaned up ${cleanedCount} expired magic links`);
+        return cleanedCount;
+        
+    } catch (error) {
+        console.error('Error cleaning up expired links:', error);
+        return 0;
     }
 }

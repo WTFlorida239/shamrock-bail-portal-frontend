@@ -90,26 +90,25 @@ ROLE MATCHES → Redirect to dashboard
 ROLE MISMATCH → Show error lightbox
 ```
 
-### Database Collections Required
+### Database Collection Required
 
-**AccessCodes Collection:**
+**MagicLinks Collection:** (Uses your existing collection)
 ```
-- accessCode (Text) - Unique 8-character code
-- caseId (Text) - Reference to case
-- portalType (Text) - "defendant", "indemnitor", or "staff"
+- token (Text) - Unique 8-character code
+- used (Boolean) - false = active, true = used/inactive
+- role (Text) - "defendant", "indemnitor", or "staff"
 - expiresAt (Date) - Expiration timestamp
-- isActive (Boolean) - Active status
-- createdAt (Date) - Creation timestamp
+- caseId (Text) - Reference to case (optional)
+- email (Text) - Associated email (optional)
+- createdAt (Date) - Creation timestamp (optional)
 ```
 
-**AccessCodeUsage Collection:**
-```
-- accessCode (Text) - Code used
-- caseId (Text) - Associated case
-- usedAt (Date) - Usage timestamp
-- ipAddress (Text) - Optional
-- userAgent (Text) - Optional
-```
+**Field Mapping:**
+- `token` → Access code (instead of "accessCode")
+- `used` → Status (false = active, true = inactive)
+- `role` → Portal type (instead of "portalType")
+
+See `MAGICLINKS_SCHEMA.md` for complete documentation.
 
 ## Deployment Checklist
 
@@ -118,8 +117,8 @@ ROLE MISMATCH → Show error lightbox
 - [ ] Add page code from PortalLanding.js
 - [ ] Create backend/accessCodes.jsw file
 - [ ] Verify element IDs match
-- [ ] Create AccessCodes database collection
-- [ ] Create AccessCodeUsage database collection
+- [ ] Verify MagicLinks collection exists with required fields
+- [ ] Ensure fields: token, used, role, expiresAt are present
 - [ ] Set up member roles (Defendant, Indemnitor, Staff)
 - [ ] Create dashboard pages if they don't exist
 - [ ] Test authentication flow
@@ -149,12 +148,12 @@ ROLE MISMATCH → Show error lightbox
 4. **Expected:** Shows error lightbox about role mismatch
 
 ### Test 4: Access Code Entry
-1. Create test access code in database:
-   - accessCode: "TEST1234"
+1. Create test magic link in MagicLinks collection:
+   - token: "TEST1234"
    - caseId: "test-case-001"
-   - portalType: "defendant"
+   - role: "defendant"
    - expiresAt: (future date)
-   - isActive: true
+   - used: false
 2. Go to https://shamrockbailbonds.biz/portal-landing
 3. Enter "TEST1234" in access code field
 4. Click Submit
